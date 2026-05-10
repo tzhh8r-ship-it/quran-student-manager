@@ -103,7 +103,15 @@ BEHAVIORS = {
     "ضعيف": 1
 }
 
-DAYS = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"]
+ARABIC_DAYS = {
+    "Saturday": "السبت",
+    "Sunday": "الأحد",
+    "Monday": "الاثنين",
+    "Tuesday": "الثلاثاء",
+    "Wednesday": "الأربعاء",
+    "Thursday": "الخميس",
+    "Friday": "الجمعة"
+}
 
 class QuranManager:
     def __init__(self, filename='students_data.json'):
@@ -132,7 +140,7 @@ class QuranManager:
             'next_memorization': '',
             'behavior': 'جيد',
             'level': 3,
-            'attendance_days': [],
+            'attendance_dates': [],  # تم التغيير من attendance_days إلى attendance_dates
             'notes': [],
             'date_added': datetime.now().isoformat()
         }
@@ -187,27 +195,38 @@ class QuranManager:
         self.save_data()
         return True, f"✅ تم تحديث السلوك والمستوى للطالب '{name}'!"
     
-    def add_attendance_day(self, name, day):
+    def add_attendance_date(self, name, date_str):
         if name not in self.students:
             return False, "❌ الطالب غير موجود!"
         
-        if day in self.students[name]['attendance_days']:
-            return False, f"❌ اليوم '{day}' مسجل بالفعل!"
+        # التوافق مع البيانات القديمة
+        if 'attendance_dates' not in self.students[name]:
+            self.students[name]['attendance_dates'] = []
         
-        self.students[name]['attendance_days'].append(day)
+        if date_str in self.students[name]['attendance_dates']:
+            return False, f"❌ التاريخ '{date_str}' مسجل بالفعل!"
+        
+        self.students[name]['attendance_dates'].append(date_str)
+        # ترتيب التواريخ
+        self.students[name]['attendance_dates'].sort()
         self.save_data()
-        return True, f"✅ تم إضافة '{day}' لحضور الطالب '{name}'!"
+        return True, f"✅ تم تسجيل حضور بتاريخ '{date_str}'!"
     
-    def delete_attendance_day(self, name, day):
+    def delete_attendance_date(self, name, date_str):
         if name not in self.students:
             return False, "❌ الطالب غير موجود!"
         
-        if day not in self.students[name]['attendance_days']:
-            return False, f"❌ اليوم '{day}' غير مسجل!"
+        if date_str not in self.students[name].get('attendance_dates', []):
+            return False, f"❌ التاريخ '{date_str}' غير مسجل!"
         
-        self.students[name]['attendance_days'].remove(day)
+        self.students[name]['attendance_dates'].remove(date_str)
         self.save_data()
-        return True, f"✅ تم حذف '{day}' من حضور الطالب '{name}'!"
+        return True, f"✅ تم حذف تاريخ الحضور '{date_str}'!"
+    
+    def get_attendance_count(self, name):
+        if name not in self.students:
+            return 0
+        return len(self.students[name].get('attendance_dates', []))
     
     def add_note(self, name, note):
         if name not in self.students:
@@ -264,7 +283,6 @@ with st.sidebar:
     st.markdown("## ⚙️ الإعدادات")
     st.markdown("---")
     
-    # إحصائيات سريعة
     st.markdown("### 📊 الإحصائيات")
     all_students = manager.get_all_students()
     
@@ -302,7 +320,6 @@ with tab1:
     all_students = manager.get_all_students()
     
     if all_students:
-        # الإحصائيات
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -340,7 +357,6 @@ with tab1:
             </div>
             """.format(completed), unsafe_allow_html=True)
         
-        # الجدول الملخص
         st.markdown("### 📋 جدول ملخص الطلاب")
         
         table_data = []
@@ -350,13 +366,14 @@ with tab1:
             remaining = 114 - num_surahs
             percentage = (num_surahs / 114) * 100
             stars = "⭐" * student['level'] + "☆" * (5 - student['level'])
+            attendance_count = len(student.get('attendance_dates', []))
             
             table_data.append({
                 "الاسم": student_name,
                 "السور المحفوظة": num_surahs,
                 "المتبقي": remaining,
                 "النسبة": f"{percentage:.1f}%",
-                "الحضور": len(student['attendance_days']),
+                "أيام الحضور": attendance_count,
                 "السلوك": student['behavior'],
                 "المستوى": stars,
                 "التحفيظ القادم": student['next_memorization'] or "---"
@@ -413,7 +430,6 @@ with tab3:
                 else:
                     st.error(message)
         
-        # عرض السور المحفوظة
         st.markdown("### 📚 السور المحفوظة للطالب")
         
         student_data = manager.get_student_data(selected_student)
@@ -424,7 +440,6 @@ with tab3:
             
             st.info(f"عدد السور: {num_surahs} من 114 ({percentage:.1f}%)")
             
-            # عرض السور في أعمدة
             col_size = 4
             cols = st.columns(col_size)
             
@@ -469,7 +484,6 @@ with tab4:
                 else:
                     st.error(message)
         
-        # عرض التحفيظ القادم
         st.markdown("### 📋 التحفيظ القادم للطالب")
         
         student_data = manager.get_student_data(selected_student)
@@ -532,40 +546,60 @@ with tab6:
     if all_students:
         selected_student = st.selectbox("👤 اختر الطالب", all_students, key="attendance_student")
         
-        # قسم الحضور
-        st.markdown("### 📅 أيام الحضور")
+        # قسم الحضور بالتاريخ
+        st.markdown("### 📅 تسجيل الحضور بالتاريخ")
         
         col1, col2 = st.columns([2, 1])
         with col1:
-            selected_day = st.selectbox("📆 اختر اليوم", DAYS, key="day_select")
+            selected_date = st.date_input(
+                "📆 اختر تاريخ الحضور",
+                value=datetime.today(),
+                key="date_input"
+            )
         with col2:
-            if st.button("➕ إضافة الحضور", key="add_attendance_btn"):
-                success, message = manager.add_attendance_day(selected_student, selected_day)
+            if st.button("➕ تسجيل الحضور", key="add_attendance_btn"):
+                date_str = selected_date.strftime("%Y-%m-%d")
+                success, message = manager.add_attendance_date(selected_student, date_str)
                 if success:
                     st.success(message)
                     st.rerun()
                 else:
                     st.error(message)
         
-        # عرض أيام الحضور
+        # عرض سجل الحضور
         student_data = manager.get_student_data(selected_student)
-        if student_data['attendance_days']:
-            st.info(f"عدد أيام الحضور: {len(student_data['attendance_days'])}")
+        attendance_dates = student_data.get('attendance_dates', [])
+        
+        if attendance_dates:
+            total_days = len(attendance_dates)
+            st.success(f"📊 إجمالي أيام الحضور: **{total_days} يوم**")
             
+            st.markdown("#### 📋 سجل الحضور")
             col_size = 3
             cols = st.columns(col_size)
             
-            for idx, day in enumerate(student_data['attendance_days']):
+            for idx, date_str in enumerate(sorted(attendance_dates, reverse=True)):
+                # تحويل التاريخ لعرضه بشكل جميل مع اسم اليوم بالعربي
+                try:
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    day_name_en = date_obj.strftime("%A")
+                    day_name_ar = ARABIC_DAYS.get(day_name_en, day_name_en)
+                    display_date = f"{day_name_ar} - {date_obj.strftime('%d/%m/%Y')}"
+                except:
+                    display_date = date_str
+                
                 with cols[idx % col_size]:
-                    col1, col2 = st.columns([2, 1])
+                    col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.write(f"✅ {day}")
+                        st.write(f"✅ {display_date}")
                     with col2:
-                        if st.button("🗑️", key=f"delete_day_{idx}"):
-                            success, message = manager.delete_attendance_day(selected_student, day)
+                        if st.button("🗑️", key=f"delete_date_{idx}"):
+                            success, message = manager.delete_attendance_date(selected_student, date_str)
                             if success:
                                 st.success(message)
                                 st.rerun()
+        else:
+            st.warning("⚠️ لم يسجل الطالب أي حضور حتى الآن!")
         
         # قسم الملاحظات
         st.markdown("---")
@@ -584,7 +618,6 @@ with tab6:
                 else:
                     st.error("❌ الملاحظة فارغة!")
         
-        # عرض الملاحظات
         if student_data['notes']:
             for idx, note in enumerate(student_data['notes']):
                 with st.expander(f"📝 ملاحظة - {note['date'][:10]}"):
@@ -612,7 +645,6 @@ with tab7:
         
         student_data = manager.get_student_data(selected_student)
         
-        # معلومات عامة
         st.markdown(f"### 📋 ملف: {selected_student}")
         
         col1, col2, col3, col4 = st.columns(4)
@@ -658,11 +690,20 @@ with tab7:
         with col2:
             st.write(f"**المستوى:** {'⭐' * student_data['level']}")
         
-        # الحضور
-        st.markdown("### 📅 الحضور")
-        if student_data['attendance_days']:
-            st.write(f"**أيام الحضور:** {', '.join(student_data['attendance_days'])}")
-            st.write(f"**عدد الأيام:** {len(student_data['attendance_days'])}")
+        # الحضور بالتواريخ
+        st.markdown("### 📅 سجل الحضور")
+        attendance_dates = student_data.get('attendance_dates', [])
+        if attendance_dates:
+            st.write(f"**إجمالي أيام الحضور: {len(attendance_dates)} يوم**")
+            formatted_dates = []
+            for date_str in sorted(attendance_dates, reverse=True):
+                try:
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    day_name_ar = ARABIC_DAYS.get(date_obj.strftime("%A"), "")
+                    formatted_dates.append(f"{day_name_ar} {date_obj.strftime('%d/%m/%Y')}")
+                except:
+                    formatted_dates.append(date_str)
+            st.write("، ".join(formatted_dates))
         else:
             st.info("لم يسجل أي حضور بعد")
         
@@ -706,6 +747,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 10px;">
     <p style="color: #666;">🕌 نظام إدارة طلاب القرآن - جميع الحقوق محفوظة</p>
-    <p style="color: #999; font-size: 0.9em;">النسخة 2.0 - محدثة مع 114 سورة</p>
+    <p style="color: #999; font-size: 0.9em;">النسخة 2.1 - مع نظام حضور بالتاريخ</p>
 </div>
 """, unsafe_allow_html=True)
